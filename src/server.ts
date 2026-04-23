@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // kappa-brain — MCP server for Kappa Cell memory
-// 23 tools, FTS5 + sqlite-vec, supersede system, KappaNet
+// 28 tools, FTS5, supersede system, wisdom lifecycle, Cerebro lineage
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -26,23 +26,27 @@ import {
   kappaThreadUpdate, kappaStats,
 } from "./tools/nice-to-have.js";
 
+import {
+  cerebroScan, cerebroLineage, cerebroPing, cerebroRegister,
+} from "./tools/cerebro.js";
+
 const server = new McpServer({
   name: "kappa-brain",
-  version: "1.0.0",
+  version: "2.0.0",
 });
 
 // ─── CRITICAL TOOLS ───
 
 server.tool("kappa_search", "Search knowledge across vault (FTS5 full-text search)", {
   query: z.string().describe("Search query"),
-  zone: z.string().optional().describe("Filter by zone: memory, work, communication, archive"),
+  zone: z.string().optional().describe("Filter by zone: intrinsic, extrinsic"),
   limit: z.number().optional().default(20).describe("Max results"),
 }, async ({ query, zone, limit }) => ({
   content: [{ type: "text", text: JSON.stringify(kappaSearch(query, zone, limit), null, 2) }],
 }));
 
 server.tool("kappa_read", "Read a document by path", {
-  path: z.string().describe("Document path (e.g. memory/learnings/2026-04-23_slug.md)"),
+  path: z.string().describe("Document path (e.g. extrinsic/learn/2026-04-23_slug.md)"),
 }, async ({ path }) => {
   const doc = kappaRead(path);
   if (!doc) return { content: [{ type: "text", text: `Document not found: ${path}` }], isError: true };
@@ -50,27 +54,27 @@ server.tool("kappa_read", "Read a document by path", {
 });
 
 server.tool("kappa_list", "List documents by zone/folder", {
-  zone: z.string().optional().describe("Filter by zone: memory, work, communication, archive"),
-  folder: z.string().optional().describe("Filter by folder: learnings, reference, resonance, drafts, lab, research, retrospectives, logs"),
+  zone: z.string().optional().describe("Filter by zone: intrinsic, extrinsic"),
+  folder: z.string().optional().describe("Filter by folder: instinct, inherit, identity, communication, experience, wisdom, archive, or nested: inbox, outbox, work, learn, drafts, lab, logs, retrospective, knowledge, reference"),
   limit: z.number().optional().default(50).describe("Max results"),
 }, async ({ zone, folder, limit }) => ({
   content: [{ type: "text", text: JSON.stringify(kappaList(zone, folder, limit), null, 2) }],
 }));
 
 server.tool("kappa_learn", "Add knowledge to vault", {
-  path: z.string().describe("Vault-relative path (e.g. memory/learnings/2026-04-23_slug.md)"),
+  path: z.string().describe("Vault-relative path (e.g. extrinsic/learn/2026-04-23_slug.md)"),
   title: z.string().describe("Document title"),
   content: z.string().describe("Document content"),
   summary: z.string().optional().describe("Short summary"),
   concepts: z.array(z.string()).optional().describe("Concept tags"),
-  zone: z.string().optional().describe("Zone (default: memory)"),
-  folder: z.string().optional().describe("Folder (default: learnings)"),
-  immutable: z.boolean().optional().default(false).describe("If true, can only be superseded (for reference/)"),
+  zone: z.string().optional().describe("Zone (default: extrinsic)"),
+  folder: z.string().optional().describe("Folder (default: learn)"),
+  immutable: z.boolean().optional().default(false).describe("If true, can only be superseded (for instinct/reference)"),
 }, async (args) => ({
   content: [{ type: "text", text: JSON.stringify(kappaLearn(args), null, 2) }],
 }));
 
-server.tool("kappa_supersede", "Update a reference/ document without deleting (Principle 1)", {
+server.tool("kappa_supersede", "Update an immutable document (instinct or reference) without deleting (Principle 1)", {
   oldPath: z.string().describe("Path of document to supersede"),
   newTitle: z.string().describe("New document title"),
   newContent: z.string().describe("New document content"),
@@ -81,12 +85,12 @@ server.tool("kappa_supersede", "Update a reference/ document without deleting (P
 }));
 
 server.tool("kappa_reflect", "Get random wisdom from vault for reflection", {
-  zone: z.string().optional().describe("Zone to reflect from (default: memory)"),
+  zone: z.string().optional().describe("Zone to reflect from (default: extrinsic)"),
 }, async ({ zone }) => ({
   content: [{ type: "text", text: JSON.stringify(kappaReflect(zone), null, 2) }],
 }));
 
-server.tool("kappa_handoff", "Prepare session handoff — latest retro, learnings, schedule", {}, async () => ({
+server.tool("kappa_handoff", "Prepare session handoff — latest retro, knowledge, schedule", {}, async () => ({
   content: [{ type: "text", text: JSON.stringify(kappaHandoff(), null, 2) }],
 }));
 
@@ -114,8 +118,8 @@ server.tool("kappa_log", "System activity log — append auto-logs, read, or sea
   content: [{ type: "text", text: JSON.stringify(kappaLog(args), null, 2) }],
 }));
 
-server.tool("kappa_work", "Manage work/ zone — drafts, lab, research (ephemeral)", {
-  action: z.enum(["draft", "lab", "research"]).describe("Work subfolder"),
+server.tool("kappa_work", "Manage extrinsic/experience/work/ zone — drafts, lab, logs (ephemeral, handoff notes go in logs)", {
+  action: z.enum(["draft", "lab", "log"]).describe("Work subfolder: drafts, lab, or logs"),
   operation: z.enum(["create", "read", "list", "delete"]).describe("CRUD operation"),
   path: z.string().optional().describe("Document path"),
   title: z.string().optional().describe("Document title"),
@@ -124,23 +128,23 @@ server.tool("kappa_work", "Manage work/ zone — drafts, lab, research (ephemera
   content: [{ type: "text", text: JSON.stringify(kappaWork(args), null, 2) }],
 }));
 
-server.tool("kappa_archive", "Archive a completed document (move to archive/ zone)", {
+server.tool("kappa_archive", "Archive a completed document to extrinsic/archive/", {
   path: z.string().describe("Document path to archive"),
   reason: z.string().optional().describe("Why this is being archived"),
 }, async (args) => ({
   content: [{ type: "text", text: JSON.stringify(kappaArchive(args), null, 2) }],
 }));
 
-server.tool("kappa_promote", "Promote a learning to reference/ (human approves, makes it immutable)", {
-  path: z.string().describe("Learning document path to promote"),
-  reason: z.string().describe("Why this learning should become a reference"),
+server.tool("kappa_promote", "Promote knowledge to wisdom/reference/ (human approves, makes it immutable)", {
+  path: z.string().describe("Knowledge document path to promote"),
+  reason: z.string().describe("Why this knowledge should become a reference"),
 }, async (args) => ({
   content: [{ type: "text", text: JSON.stringify(kappaPromote(args), null, 2) }],
 }));
 
-server.tool("kappa_demote", "Demote a reference/ document back to learnings/ for re-evaluation (Principle 7: Keep Tidy)", {
+server.tool("kappa_demote", "Demote wisdom/reference/ back to wisdom/knowledge/ for re-evaluation (Principle 7: Keep Tidy)", {
   path: z.string().describe("Reference document path to demote"),
-  reason: z.string().describe("Why this reference should be demoted back to learnings"),
+  reason: z.string().describe("Why this reference should be demoted back to knowledge"),
 }, async (args) => ({
   content: [{ type: "text", text: JSON.stringify(kappaDemote(args), null, 2) }],
 }));
@@ -215,6 +219,38 @@ server.tool("kappa_thread_update", "Add a message to a discussion thread", {
 
 server.tool("kappa_stats", "Vault statistics — document counts by zone/folder, supersede count, messages", {}, async () => ({
   content: [{ type: "text", text: JSON.stringify(kappaStats(), null, 2) }],
+}));
+
+// ─── CEREBRO TOOLS ───
+
+server.tool("cerebro_scan", "Scan KappaNet for Cells — list registered cells and find children (KappaNet discovery)", {
+  repo: z.string().optional().describe("GitHub repo to scan for birth announcements (owner/repo)"),
+  limit: z.number().optional().default(50).describe("Max results"),
+}, async ({ repo, limit }) => ({
+  content: [{ type: "text", text: JSON.stringify(cerebroScan(repo, limit), null, 2) }],
+}));
+
+server.tool("cerebro_lineage", "Query Cell lineage — ancestors, descendants, or full family tree (KappaNet Cerebro)", {
+  direction: z.enum(["ancestors", "descendants", "tree"]).optional().default("tree").describe("Direction: ancestors (up), descendants (down), or tree (both)"),
+}, async ({ direction }) => ({
+  content: [{ type: "text", text: JSON.stringify(cerebroLineage(direction), null, 2) }],
+}));
+
+server.tool("cerebro_ping", "Check Cell presence — update own last_seen or check if a Cell is registered (KappaNet heartbeat)", {
+  targetKappanetId: z.string().optional().describe("Target kappanet_id to check (omit for self-check)"),
+}, async ({ targetKappanetId }) => ({
+  content: [{ type: "text", text: JSON.stringify(cerebroPing(targetKappanetId), null, 2) }],
+}));
+
+server.tool("cerebro_register", "Register this Cell in the KappaNet registry (Cerebro birth enrollment)", {
+  cellName: z.string().describe("Cell name (e.g. Adams-kappa)"),
+  repo: z.string().describe("GitHub repo (e.g. doctorboyz/Adams-kappa)"),
+  parentKappanetId: z.string().optional().describe("Parent kappanet_id (omit for root Cell)"),
+  ancestry: z.string().optional().describe("JSON array of ancestor repos (e.g. [\"doctorboyz/Adams-kappa\"])"),
+  dnaVersion: z.string().describe("kappa-genome version (e.g. 1.0.0)"),
+  born: z.string().describe("Birth date (YYYY-MM-DD)"),
+}, async (args) => ({
+  content: [{ type: "text", text: JSON.stringify(cerebroRegister(args), null, 2) }],
 }));
 
 // ─── START ───

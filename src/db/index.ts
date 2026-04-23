@@ -119,6 +119,36 @@ sqlite.exec(`
   );
 `);
 
+// ─── Cerebro: Cell registry and lineage (KappaNet) ───
+
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS cell_registry (
+    kappanet_id TEXT PRIMARY KEY,
+    cell_name TEXT NOT NULL,
+    repo TEXT NOT NULL,
+    parent_kappanet_id TEXT,
+    ancestry TEXT NOT NULL DEFAULT '[]',
+    dna_version TEXT NOT NULL,
+    born TEXT NOT NULL,
+    last_seen TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now')),
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    FOREIGN KEY (parent_kappanet_id) REFERENCES cell_registry(kappanet_id)
+  )
+`);
+
+sqlite.exec(`
+  CREATE TABLE IF NOT EXISTS cell_lineage (
+    ancestor_id TEXT NOT NULL,
+    descendant_id TEXT NOT NULL,
+    depth INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (ancestor_id, descendant_id),
+    FOREIGN KEY (ancestor_id) REFERENCES cell_registry(kappanet_id),
+    FOREIGN KEY (descendant_id) REFERENCES cell_registry(kappanet_id)
+  )
+`);
+
 // Indexes
 sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_docs_zone ON kappa_documents(zone)`);
 sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_docs_folder ON kappa_documents(folder)`);
@@ -127,5 +157,56 @@ sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_activity_tool ON activity_log(tool)`
 sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_activity_ts ON activity_log(timestamp)`);
 sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_msgs_direction ON cell_messages(direction)`);
 sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_trace_session ON trace_log(session_id)`);
+sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_cell_registry_parent ON cell_registry(parent_kappanet_id)`);
+sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_cell_registry_status ON cell_registry(status)`);
+sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_cell_lineage_ancestor ON cell_lineage(ancestor_id)`);
+sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_cell_lineage_descendant ON cell_lineage(descendant_id)`);
+
+// ─── Valid zones and folders ───
+// Zone → top-level folders (also valid `folder` column values)
+// Nested folders are also valid `folder` column values for semantic queries
+// e.g. folder='knowledge' for docs under extrinsic/wisdom/knowledge/
+
+export const VAULT_SCHEMA = {
+  intrinsic: ["instinct", "inherit", "identity"],
+  extrinsic: ["communication", "experience", "wisdom", "archive"],
+} as const;
+
+export type Zone = keyof typeof VAULT_SCHEMA;
+export type Folder = typeof VAULT_SCHEMA[Zone][number];
+
+// All valid `folder` column values — top-level + nested
+export const VALID_FOLDERS = [
+  // intrinsic top-level
+  "instinct", "inherit", "identity",
+  // extrinsic top-level
+  "communication", "experience", "wisdom", "archive",
+  // extrinsic nested (communication)
+  "inbox", "outbox",
+  // extrinsic nested (experience)
+  "work", "learn",
+  // extrinsic nested (experience/work)
+  "drafts", "lab", "logs",
+  // extrinsic nested (wisdom)
+  "retrospective", "knowledge", "reference",
+] as const;
+
+export type ValidFolder = typeof VALID_FOLDERS[number];
+
+// Nested folder mappings — parent → children
+export const NESTED_FOLDERS: Record<string, string[]> = {
+  communication: ["inbox", "outbox"],
+  experience: ["work", "learn"],
+  work: ["drafts", "lab", "logs"],
+  wisdom: ["retrospective", "knowledge", "reference"],
+};
+
+// Reverse map: child → parent (for path construction)
+export const FOLDER_PARENT: Record<string, string> = {};
+for (const [parent, children] of Object.entries(NESTED_FOLDERS)) {
+  for (const child of children) {
+    FOLDER_PARENT[child] = parent;
+  }
+}
 
 export { sqlite };
