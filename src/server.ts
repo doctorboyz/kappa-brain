@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // kappa-brain — MCP server for Kappa Cell memory
-// 21 tools, FTS5 + sqlite-vec, supersede system, KappaNet
+// 23 tools, FTS5 + sqlite-vec, supersede system, KappaNet
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -16,6 +16,7 @@ import {
 
 import {
   kappaLog, kappaWork, kappaArchive, kappaPromote,
+  kappaDemote, kappaDefrag,
   kappaScheduleAdd, kappaScheduleList,
   kappaTrace, kappaTraceList, kappaTraceGet,
 } from "./tools/important.js";
@@ -135,6 +136,17 @@ server.tool("kappa_promote", "Promote a learning to reference/ (human approves, 
   reason: z.string().describe("Why this learning should become a reference"),
 }, async (args) => ({
   content: [{ type: "text", text: JSON.stringify(kappaPromote(args), null, 2) }],
+}));
+
+server.tool("kappa_demote", "Demote a reference/ document back to learnings/ for re-evaluation (Principle 7: Keep Tidy)", {
+  path: z.string().describe("Reference document path to demote"),
+  reason: z.string().describe("Why this reference should be demoted back to learnings"),
+}, async (args) => ({
+  content: [{ type: "text", text: JSON.stringify(kappaDemote(args), null, 2) }],
+}));
+
+server.tool("kappa_defrag", "Defragment vault — find duplicates, repair orphans, identify stale work/ items (Principle 7: Keep Tidy)", {}, async () => ({
+  content: [{ type: "text", text: JSON.stringify(kappaDefrag(), null, 2) }],
 }));
 
 server.tool("kappa_schedule_add", "Add a scheduled task", {

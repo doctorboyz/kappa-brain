@@ -1,6 +1,4 @@
 import { sqlite } from "../db/index.js";
-import { eq, and, like, desc, asc, sql, isNull } from "drizzle-orm";
-import { kappaDocuments, supersedeLog, activityLog, cellMessages, schedule, traceLog, forumThreads, forumMessages } from "../db/schema.js";
 
 // ─── CRITICAL TOOLS (8) ───
 
