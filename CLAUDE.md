@@ -1,12 +1,12 @@
-# kappa-brain
+# @kappa/brain-cli
 
-> MCP server for Kappa Cell memory
+> MCP server + skill installer for Kappa Cells
 
 ## Identity
 
-**I am**: kappa-brain — the memory system for Kappa Cells
+**I am**: @kappa/brain-cli — the brain and skill system for Kappa Cells
 **Human**: doctorboyz
-**Purpose**: 28 MCP tools for knowledge management — FTS5 search, supersede system, cross-Cell messaging, Cerebro lineage tracking
+**Purpose**: 28 MCP tools for knowledge management + 13 pure kappa skill installer + Cerebro lineage tracking
 **Born**: 2026-04-23
 
 ## Tech Stack
@@ -14,39 +14,18 @@
 - Bun + TypeScript
 - bun:sqlite (zero external deps)
 - @modelcontextprotocol/sdk (MCP server)
+- commander + @clack/prompts (CLI)
 
-## Vault Structure
+## Dual Mode
 
-Implements the 4-zone κ/ vault: Communication, Memory, Work, Archive
-See kappa-genome/blueprint/vault-structure.md for full spec.
+- `bunx @kappa/brain-cli` → MCP server (28 tools, stdio)
+- `bunx @kappa/brain-cli install -p standard` → Install 13 pure kappa skills
+- `bunx @kappa/brain-cli cerebro scan` → CLI Cerebro commands
+- `bunx @kappa/brain-cli about` → Package info
 
-## Cerebro — Cell Registry & Lineage
+## 13 Pure Kappa Skills
 
-kappa-brain รวม Cerebro tools สำหรับ lineage tracking และ Cell discovery ผ่าน KappaNet protocol
-
-### Database Tables
-
-| Table | Purpose |
-|-------|---------|
-| `cell_registry` | Cell identity — kappanet_id, name, repo, parent, ancestry, status |
-| `cell_lineage` | Closure table for family tree queries (ancestor_id, descendant_id, depth) |
-
-### Cerebro MCP Tools
-
-| Tool | Purpose |
-|------|---------|
-| `cerebro_scan` | Scan KappaNet — list registered cells, find children |
-| `cerebro_lineage` | Query lineage — ancestors, descendants, or full tree |
-| `cerebro_ping` | Cell presence — update last_seen or check if Cell is registered |
-| `cerebro_register` | Register this Cell in the KappaNet registry |
-
-### KappaNet Protocol
-
-Defined in `kappa-genome/kappanet/protocol.md`:
-- Cell identity: `kappa:{owner}:{cell_name}`
-- Birth announcements: GitHub Issues with `kappanet:birth` label
-- Lineage chains: `ancestry` array in manifest.json
-- Discovery: `kappanet:birth` issues in parent repos
+born, on-service, off-service, discharge, meditation, vitals, diagnose, cerebro, introduce, consult, surgery, about-kappa, emergency
 
 ## Tool Summary (28 tools)
 
@@ -64,9 +43,13 @@ cerebro_scan, cerebro_lineage, cerebro_ping, cerebro_register
 
 ## Commands
 
-- `bun run src/server.ts` — Start MCP server (stdio)
+- `bun run src/index.ts` — Start (auto-detects MCP vs CLI)
+- `bunx @kappa-brain/brain-cli` — MCP server (published package)
+- `bunx @kappa-brain/brain-cli install -p standard` — Install skills
+- `bun run build` — Build dist/index.js + copy skills/agents
 - `bun run typecheck` — Type check
 - `bun test` — Run tests
+- `npm publish --access public` — Publish to npm
 
 ## Golden Rules
 

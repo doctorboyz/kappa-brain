@@ -1,6 +1,6 @@
 import { sqlite } from "../db/index.js";
 
-// ─── IMPORTANT TOOLS (8) ───
+// ─── IMPORTANT TOOLS (11) ───
 
 export function kappaLog(args: { action: "append" | "read" | "search"; date?: string; query?: string; entry?: string }) {
   const now = Math.floor(Date.now() / 1000);
@@ -30,14 +30,18 @@ export function kappaLog(args: { action: "append" | "read" | "search"; date?: st
 }
 
 export function kappaWork(args: {
-  action: "draft" | "lab" | "research";
+  action: "draft" | "lab" | "log";
   operation: "create" | "read" | "list" | "delete";
   path?: string;
   title?: string;
   content?: string;
 }) {
-  const zone = "work";
-  const folder = args.action; // drafts, lab, or research
+  const zone = "extrinsic";
+  const folderMap: Record<string, string> = { draft: "work", lab: "work", log: "work" };
+  const subfolderMap: Record<string, string> = { draft: "drafts", lab: "lab", log: "logs" };
+  const folder = folderMap[args.action];
+  const subfolder = subfolderMap[args.action];
+  const fullPath = `${folder}/${subfolder}`;
   const now = Math.floor(Date.now() / 1000);
 
   if (args.operation === "list") {
@@ -49,7 +53,7 @@ export function kappaWork(args: {
   }
 
   if (args.operation === "create") {
-    const path = args.path || `${zone}/${folder}/${now}_${(args.title || "untitled").replace(/\s+/g, "-").toLowerCase()}.md`;
+    const path = args.path || `${zone}/${fullPath}/${now}_${(args.title || "untitled").replace(/\s+/g, "-").toLowerCase()}.md`;
     const result = sqlite.prepare(`
       INSERT INTO kappa_documents (zone, folder, path, title, content, created_at)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -64,11 +68,13 @@ export function kappaWork(args: {
   }
 
   if (args.operation === "read") {
+    if (!args.path) throw new Error("path is required for read operation");
     return sqlite.prepare(`SELECT * FROM kappa_documents WHERE zone = ? AND folder = ? AND path = ?`)
       .get(zone, folder, args.path);
   }
 
   if (args.operation === "delete") {
+    if (!args.path) throw new Error("path is required for delete operation");
     // Ephemeral: work/ zone CAN be cleared (not Principle 1 — work is ephemeral)
     sqlite.prepare(`DELETE FROM kappa_fts WHERE rowid IN (SELECT id FROM kappa_documents WHERE zone = ? AND folder = ? AND path = ?)`)
       .run(zone, folder, args.path);
@@ -85,11 +91,11 @@ export function kappaArchive(args: { path: string; reason?: string }) {
   if (!doc) throw new Error(`Document not found: ${args.path}`);
 
   const now = Math.floor(Date.now() / 1000);
-  const archivePath = `archive/${doc.folder}/${doc.path.replace(/^\w+\/\w+\//, "")}`;
+  // Archive moves to archive folder within extrinsic zone
+  const archivePath = `extrinsic/archive/${doc.path.replace(/^\w+\/\w+\//, "")}`;
 
-  // Move to archive zone
   sqlite.prepare(`
-    UPDATE kappa_documents SET zone = 'archive', path = ?, updated_at = ? WHERE id = ?
+    UPDATE kappa_documents SET zone = 'extrinsic', folder = 'archive', path = ?, updated_at = ? WHERE id = ?
   `).run(archivePath, now, doc.id);
 
   // Update FTS
@@ -107,19 +113,19 @@ export function kappaArchive(args: { path: string; reason?: string }) {
 }
 
 export function kappaPromote(args: { path: string; reason: string }) {
-  const doc = sqlite.prepare(`SELECT * FROM kappa_documents WHERE path = ? AND folder = 'learnings'`).get(args.path) as any;
-  if (!doc) throw new Error(`Learning not found: ${args.path}`);
+  const doc = sqlite.prepare(`SELECT * FROM kappa_documents WHERE path = ? AND folder = 'knowledge'`).get(args.path) as any;
+  if (!doc) throw new Error(`Knowledge document not found: ${args.path}`);
 
   const now = Math.floor(Date.now() / 1000);
-  const newPath = doc.path.replace("learnings/", "reference/");
+  const newPath = doc.path.replace("knowledge/", "reference/");
 
   // Create reference version (immutable)
   const result = sqlite.prepare(`
     INSERT INTO kappa_documents (zone, folder, path, title, content, summary, concepts, is_immutable, created_at)
-    VALUES ('memory', 'reference', ?, ?, ?, ?, ?, 1, ?)
+    VALUES ('extrinsic', 'reference', ?, ?, ?, ?, ?, 1, ?)
   `).run(newPath, doc.title, doc.content, doc.summary, doc.concepts, now);
 
-  // Mark learning as superseded by the new reference
+  // Mark knowledge as superseded by the new reference
   sqlite.prepare(`UPDATE kappa_documents SET superseded_by = ? WHERE id = ?`).run(result.lastInsertRowid, doc.id);
 
   // Log the promotion
@@ -136,51 +142,20 @@ export function kappaPromote(args: { path: string; reason: string }) {
   return { oldPath: args.path, newPath, newId: result.lastInsertRowid, reason: args.reason };
 }
 
-export function kappaScheduleAdd(args: { task: string; cron?: string; nextRun?: number }) {
-  const result = sqlite.prepare(`
-    INSERT INTO schedule (task, cron, next_run, enabled) VALUES (?, ?, ?, 1)
-  `).run(args.task, args.cron || null, args.nextRun || null);
-  return { id: result.lastInsertRowid, task: args.task };
-}
-
-export function kappaScheduleList() {
-  return sqlite.prepare(`SELECT * FROM schedule WHERE enabled = 1 ORDER BY next_run ASC`).all();
-}
-
-export function kappaTrace(args: { sessionId: string; tool: string; action?: string; input?: string; output?: string; durationMs?: number }) {
-  const result = sqlite.prepare(`
-    INSERT INTO trace_log (session_id, tool, action, input, output, started_at, duration_ms)
-    VALUES (?, ?, ?, ?, ?, unixepoch(), ?)
-  `).run(args.sessionId, args.tool, args.action || "", args.input || null, args.output || null, args.durationMs || null);
-  return { id: result.lastInsertRowid };
-}
-
-export function kappaTraceList(args: { sessionId: string; limit?: number }) {
-  return sqlite.prepare(`
-    SELECT * FROM trace_log WHERE session_id = ? ORDER BY started_at DESC LIMIT ?
-  `).all(args.sessionId, args.limit || 50);
-}
-
-export function kappaTraceGet(args: { id: number }) {
-  return sqlite.prepare(`SELECT * FROM trace_log WHERE id = ?`).get(args.id);
-}
-
-// ─── MEDITATION TOOLS (Principle 7: Keep Tidy) ───
-
 export function kappaDemote(args: { path: string; reason: string }) {
   const doc = sqlite.prepare(`SELECT * FROM kappa_documents WHERE path = ? AND folder = 'reference' AND is_immutable = 1`).get(args.path) as any;
   if (!doc) throw new Error(`Reference document not found or not immutable: ${args.path}`);
 
   const now = Math.floor(Date.now() / 1000);
-  const newPath = doc.path.replace("reference/", "learnings/");
+  const newPath = doc.path.replace("reference/", "knowledge/");
 
-  // Create learnings version (mutable, not immutable)
+  // Create knowledge version (mutable, not immutable)
   const result = sqlite.prepare(`
     INSERT INTO kappa_documents (zone, folder, path, title, content, summary, concepts, is_immutable, created_at)
-    VALUES ('memory', 'learnings', ?, ?, ?, ?, ?, 0, ?)
+    VALUES ('extrinsic', 'knowledge', ?, ?, ?, ?, ?, 0, ?)
   `).run(newPath, doc.title, doc.content, doc.summary, doc.concepts, now);
 
-  // Mark reference as superseded by the demoted learning
+  // Mark reference as superseded by the demoted knowledge
   sqlite.prepare(`UPDATE kappa_documents SET superseded_by = ? WHERE id = ?`).run(result.lastInsertRowid, doc.id);
 
   // Log the demotion
@@ -225,7 +200,7 @@ export function kappaDefrag() {
   const sevenDaysAgo = now - 7 * 86400;
   const staleWork = sqlite.prepare(`
     SELECT id, path, folder, title FROM kappa_documents
-    WHERE zone = 'work' AND created_at < ? AND superseded_by IS NULL
+    WHERE zone = 'extrinsic' AND folder = 'work' AND created_at < ? AND superseded_by IS NULL
   `).all(sevenDaysAgo) as any[];
 
   // Step 4: Count by zone for summary
@@ -259,4 +234,33 @@ export function kappaDefrag() {
     changes,
     defraggedAt: now,
   };
+}
+
+export function kappaScheduleAdd(args: { task: string; cron?: string; nextRun?: number }) {
+  const result = sqlite.prepare(`
+    INSERT INTO schedule (task, cron, next_run, enabled) VALUES (?, ?, ?, 1)
+  `).run(args.task, args.cron || null, args.nextRun || null);
+  return { id: result.lastInsertRowid, task: args.task };
+}
+
+export function kappaScheduleList() {
+  return sqlite.prepare(`SELECT * FROM schedule WHERE enabled = 1 ORDER BY next_run ASC`).all();
+}
+
+export function kappaTrace(args: { sessionId: string; tool: string; action?: string; input?: string; output?: string; durationMs?: number }) {
+  const result = sqlite.prepare(`
+    INSERT INTO trace_log (session_id, tool, action, input, output, started_at, duration_ms)
+    VALUES (?, ?, ?, ?, ?, unixepoch(), ?)
+  `).run(args.sessionId, args.tool, args.action || "", args.input || null, args.output || null, args.durationMs || null);
+  return { id: result.lastInsertRowid };
+}
+
+export function kappaTraceList(args: { sessionId: string; limit?: number }) {
+  return sqlite.prepare(`
+    SELECT * FROM trace_log WHERE session_id = ? ORDER BY started_at DESC LIMIT ?
+  `).all(args.sessionId, args.limit || 50);
+}
+
+export function kappaTraceGet(args: { id: number }) {
+  return sqlite.prepare(`SELECT * FROM trace_log WHERE id = ?`).get(args.id);
 }

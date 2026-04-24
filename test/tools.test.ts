@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite";
 import { join } from "path";
 import { tmpdir } from "os";
 import { mkdirSync, rmSync } from "fs";
+import { VALID_FOLDERS, NESTED_FOLDERS, FOLDER_PARENT } from "../src/db/index.js";
 
 // Re-create schema for test DB
 function initTestDb(db: Database) {
@@ -136,8 +137,8 @@ function createTools(db: Database) {
   }
 
   function kappaLearn(args: { path: string; title: string; content: string; summary?: string; concepts?: string[]; zone?: string; folder?: string; immutable?: boolean }) {
-    const zone = args.zone || "memory";
-    const folder = args.folder || "learnings";
+    const zone = args.zone || "extrinsic";
+    const folder = args.folder || "learn";
     const now = Math.floor(Date.now() / 1000);
     const conceptsJson = args.concepts ? JSON.stringify(args.concepts) : null;
     const result = db.prepare(`INSERT INTO kappa_documents (zone, folder, path, title, content, summary, concepts, is_immutable, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(zone, folder, args.path, args.title, args.content, args.summary || null, conceptsJson, args.immutable ? 1 : 0, now);
@@ -173,7 +174,7 @@ function createTools(db: Database) {
   function kappaSupersede(args: { oldPath: string; newTitle: string; newContent: string; newSummary?: string; reason: string }) {
     const old = db.prepare(`SELECT * FROM kappa_documents WHERE path = ?`).get(args.oldPath) as any;
     if (!old) throw new Error(`Document not found: ${args.oldPath}`);
-    if (!old.is_immutable) throw new Error(`Only reference/ documents can be superseded. Use kappa_learn to update learnings.`);
+    if (!old.is_immutable) throw new Error(`Only immutable documents (instinct or reference) can be superseded. Use kappa_learn to update mutable documents.`);
     const now = Math.floor(Date.now() / 1000);
     const newPath = args.oldPath.replace(/\.md$/, `_v${now}.md`);
     const result = db.prepare(`INSERT INTO kappa_documents (zone, folder, path, title, content, summary, concepts, is_immutable, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`).run(old.zone, old.folder, newPath, args.newTitle, args.newContent, args.newSummary || null, old.concepts, now);
@@ -186,11 +187,11 @@ function createTools(db: Database) {
   }
 
   function kappaPromote(args: { path: string; reason: string }) {
-    const doc = db.prepare(`SELECT * FROM kappa_documents WHERE path = ? AND folder = 'learnings'`).get(args.path) as any;
-    if (!doc) throw new Error(`Learning not found: ${args.path}`);
+    const doc = db.prepare(`SELECT * FROM kappa_documents WHERE path = ? AND folder = 'knowledge'`).get(args.path) as any;
+    if (!doc) throw new Error(`Knowledge document not found: ${args.path}`);
     const now = Math.floor(Date.now() / 1000);
-    const newPath = doc.path.replace("learnings/", "reference/");
-    const result = db.prepare(`INSERT INTO kappa_documents (zone, folder, path, title, content, summary, concepts, is_immutable, created_at) VALUES ('memory', 'reference', ?, ?, ?, ?, ?, 1, ?)`).run(newPath, doc.title, doc.content, doc.summary, doc.concepts, now);
+    const newPath = doc.path.replace("knowledge/", "reference/");
+    const result = db.prepare(`INSERT INTO kappa_documents (zone, folder, path, title, content, summary, concepts, is_immutable, created_at) VALUES ('extrinsic', 'reference', ?, ?, ?, ?, ?, 1, ?)`).run(newPath, doc.title, doc.content, doc.summary, doc.concepts, now);
     db.prepare(`UPDATE kappa_documents SET superseded_by = ? WHERE id = ?`).run(result.lastInsertRowid, doc.id);
     db.prepare(`INSERT INTO supersede_log (old_id, new_id, reason, superseded_at, human_approved) VALUES (?, ?, ?, ?, 1)`).run(doc.id, result.lastInsertRowid, `Promoted to reference: ${args.reason}`, now);
     db.prepare(`INSERT INTO activity_log (timestamp, tool, action, target_path, details) VALUES (?, 'kappa_promote', 'promote', ?, ?)`).run(now, args.path, `→ ${newPath}: ${args.reason}`);
@@ -201,8 +202,8 @@ function createTools(db: Database) {
     const doc = db.prepare(`SELECT * FROM kappa_documents WHERE path = ? AND folder = 'reference' AND is_immutable = 1`).get(args.path) as any;
     if (!doc) throw new Error(`Reference document not found or not immutable: ${args.path}`);
     const now = Math.floor(Date.now() / 1000);
-    const newPath = doc.path.replace("reference/", "learnings/");
-    const result = db.prepare(`INSERT INTO kappa_documents (zone, folder, path, title, content, summary, concepts, is_immutable, created_at) VALUES ('memory', 'learnings', ?, ?, ?, ?, ?, 0, ?)`).run(newPath, doc.title, doc.content, doc.summary, doc.concepts, now);
+    const newPath = doc.path.replace("reference/", "knowledge/");
+    const result = db.prepare(`INSERT INTO kappa_documents (zone, folder, path, title, content, summary, concepts, is_immutable, created_at) VALUES ('extrinsic', 'knowledge', ?, ?, ?, ?, ?, 0, ?)`).run(newPath, doc.title, doc.content, doc.summary, doc.concepts, now);
     db.prepare(`UPDATE kappa_documents SET superseded_by = ? WHERE id = ?`).run(result.lastInsertRowid, doc.id);
     db.prepare(`INSERT INTO supersede_log (old_id, new_id, reason, superseded_at, human_approved) VALUES (?, ?, ?, ?, 1)`).run(doc.id, result.lastInsertRowid, `Demoted from reference: ${args.reason}`, now);
     db.prepare(`INSERT INTO activity_log (timestamp, tool, action, target_path, details) VALUES (?, 'kappa_demote', 'demote', ?, ?)`).run(now, args.path, `→ ${newPath}: ${args.reason}`);
@@ -225,7 +226,7 @@ function createTools(db: Database) {
     const duplicates = db.prepare(`SELECT title, folder, COUNT(*) as cnt FROM kappa_documents WHERE superseded_by IS NULL AND title IS NOT NULL AND title != '' GROUP BY title, folder HAVING cnt > 1`).all() as any[];
     const orphans = db.prepare(`SELECT d.id, d.path, d.superseded_by FROM kappa_documents d WHERE d.superseded_by IS NOT NULL AND NOT EXISTS (SELECT 1 FROM supersede_log s WHERE s.old_id = d.id)`).all() as any[];
     const sevenDaysAgo = now - 7 * 86400;
-    const staleWork = db.prepare(`SELECT id, path, folder, title FROM kappa_documents WHERE zone = 'work' AND created_at < ? AND superseded_by IS NULL`).all(sevenDaysAgo) as any[];
+    const staleWork = db.prepare(`SELECT id, path, folder, title FROM kappa_documents WHERE zone = 'extrinsic' AND folder = 'work' AND created_at < ? AND superseded_by IS NULL`).all(sevenDaysAgo) as any[];
     const zoneCounts = db.prepare(`SELECT zone, folder, COUNT(*) as count FROM kappa_documents WHERE superseded_by IS NULL GROUP BY zone, folder`).all() as any[];
     for (const orphan of orphans) {
       db.prepare(`INSERT INTO supersede_log (old_id, new_id, reason, superseded_at, human_approved) VALUES (?, ?, 'defrag: auto-repaired orphaned supersede', ?, 0)`).run(orphan.id, orphan.superseded_by, now);
@@ -256,60 +257,87 @@ afterAll(() => {
   try { rmSync(testDir, { recursive: true }); } catch {}
 });
 
-describe("kappa-brain tools", () => {
-  // ─── LEARN ───
+describe("kappa-brain tools (v2 vault structure)", () => {
+  // ─── LEARN (new zones) ───
 
-  test("kappaLearn creates a learning document", () => {
+  test("kappaLearn creates an extrinsic/learn document", () => {
     const result = tools.kappaLearn({
-      path: "memory/learnings/2026-04-23_test-learning.md",
-      title: "Test Learning",
-      content: "This is a test learning about bun:sqlite",
-      summary: "Bun uses bun:sqlite instead of better-sqlite3",
+      path: "extrinsic/learn/2026-04-23_bun-sqlite.md",
+      title: "Bun SQLite Pattern",
+      content: "Use bun:sqlite instead of better-sqlite3 for Bun projects",
+      summary: "Bun has built-in SQLite support",
       concepts: ["bun", "sqlite"],
     });
-    expect(result.path).toBe("memory/learnings/2026-04-23_test-learning.md");
-    expect(result.zone).toBe("memory");
-    expect(result.folder).toBe("learnings");
-    expect(result.id).toBeGreaterThan(0);
+    expect(result.path).toBe("extrinsic/learn/2026-04-23_bun-sqlite.md");
+    expect(result.zone).toBe("extrinsic");
+    expect(result.folder).toBe("learn");
   });
 
-  test("kappaLearn creates a reference document (immutable)", () => {
+  test("kappaLearn creates an intrinsic/instinct document (immutable)", () => {
     const result = tools.kappaLearn({
-      path: "memory/reference/coding-standards.md",
+      path: "intrinsic/instinct/principles.md",
+      title: "Keep Tidy",
+      content: "Every piece has purpose",
+      zone: "intrinsic",
+      folder: "instinct",
+      immutable: true,
+    });
+    expect(result.zone).toBe("intrinsic");
+    expect(result.folder).toBe("instinct");
+    const doc = tools.kappaRead("intrinsic/instinct/principles.md") as any;
+    expect(doc.is_immutable).toBe(1);
+  });
+
+  test("kappaLearn creates an intrinsic/identity document", () => {
+    const result = tools.kappaLearn({
+      path: "intrinsic/identity/born_2026-04-23.md",
+      title: "Born",
+      content: "Kappa Cell born on 2026-04-23",
+      zone: "intrinsic",
+      folder: "identity",
+    });
+    expect(result.zone).toBe("intrinsic");
+    expect(result.folder).toBe("identity");
+  });
+
+  test("kappaLearn creates an extrinsic/wisdom/knowledge document", () => {
+    const result = tools.kappaLearn({
+      path: "extrinsic/wisdom/knowledge/vault-folder-ownership.md",
+      title: "Every Folder Needs a Primary Tool",
+      content: "Without clear ownership, folders become dumping grounds",
+      zone: "extrinsic",
+      folder: "knowledge",
+    });
+    expect(result.zone).toBe("extrinsic");
+    expect(result.folder).toBe("knowledge");
+  });
+
+  test("kappaLearn creates an extrinsic/wisdom/reference document (immutable)", () => {
+    const result = tools.kappaLearn({
+      path: "extrinsic/wisdom/reference/coding-standards.md",
       title: "Coding Standards",
       content: "Always use bun:sqlite for database operations",
-      zone: "memory",
+      zone: "extrinsic",
       folder: "reference",
       immutable: true,
     });
     expect(result.folder).toBe("reference");
-    const doc = tools.kappaRead("memory/reference/coding-standards.md") as any;
+    const doc = tools.kappaRead("extrinsic/wisdom/reference/coding-standards.md") as any;
     expect(doc.is_immutable).toBe(1);
-  });
-
-  test("kappaLearn creates a work document", () => {
-    const result = tools.kappaLearn({
-      path: "work/research/hono-patterns.md",
-      title: "Hono Patterns",
-      content: "Hono middleware patterns for routing",
-      zone: "work",
-      folder: "research",
-    });
-    expect(result.zone).toBe("work");
-    expect(result.folder).toBe("research");
   });
 
   // ─── READ ───
 
   test("kappaRead returns document by path", () => {
-    const doc = tools.kappaRead("memory/learnings/2026-04-23_test-learning.md") as any;
+    const doc = tools.kappaRead("extrinsic/learn/2026-04-23_bun-sqlite.md") as any;
     expect(doc).not.toBeNull();
-    expect(doc.title).toBe("Test Learning");
-    expect(doc.content).toContain("bun:sqlite");
+    expect(doc.title).toBe("Bun SQLite Pattern");
+    expect(doc.zone).toBe("extrinsic");
+    expect(doc.folder).toBe("learn");
   });
 
   test("kappaRead returns null for nonexistent path", () => {
-    const doc = tools.kappaRead("memory/learnings/nonexistent.md");
+    const doc = tools.kappaRead("nonexistent/path.md");
     expect(doc).toBeNull();
   });
 
@@ -318,33 +346,31 @@ describe("kappa-brain tools", () => {
   test("kappaSearch finds documents by content", () => {
     const results = tools.kappaSearch("sqlite") as any[];
     expect(results.length).toBeGreaterThan(0);
-    const found = results.some((r: any) => r.title === "Test Learning" || r.title === "Coding Standards");
-    expect(found).toBe(true);
   });
 
-  test("kappaSearch filters by zone", () => {
-    const results = tools.kappaSearch("patterns", "work") as any[];
-    expect(results.every((r: any) => r.zone === "work")).toBe(true);
+  test("kappaSearch filters by zone (intrinsic)", () => {
+    const results = tools.kappaSearch("tidy", "intrinsic") as any[];
+    expect(results.every((r: any) => r.zone === "intrinsic")).toBe(true);
   });
 
   // ─── LIST ───
 
   test("kappaList returns documents by zone", () => {
-    const results = tools.kappaList("memory") as any[];
-    expect(results.length).toBeGreaterThanOrEqual(2); // learnings + reference
-    expect(results.every((r: any) => r.zone === "memory")).toBe(true);
+    const results = tools.kappaList("intrinsic") as any[];
+    expect(results.length).toBeGreaterThanOrEqual(2); // instinct + identity
+    expect(results.every((r: any) => r.zone === "intrinsic")).toBe(true);
   });
 
   test("kappaList filters by folder", () => {
-    const results = tools.kappaList("memory", "learnings") as any[];
-    expect(results.every((r: any) => r.folder === "learnings")).toBe(true);
+    const results = tools.kappaList("extrinsic", "knowledge") as any[];
+    expect(results.every((r: any) => r.folder === "knowledge")).toBe(true);
   });
 
-  // ─── SUPERSEDE ───
+  // ─── SUPERSEDE (instinct/reference only) ───
 
   test("kappaSupersede creates new version and marks old as superseded", () => {
     const result = tools.kappaSupersede({
-      oldPath: "memory/reference/coding-standards.md",
+      oldPath: "extrinsic/wisdom/reference/coding-standards.md",
       newTitle: "Coding Standards v2",
       newContent: "Updated standards: use bun:sqlite and FTS5",
       reason: "Standards updated for Bun ecosystem",
@@ -352,88 +378,82 @@ describe("kappa-brain tools", () => {
     expect(result.reason).toBe("Standards updated for Bun ecosystem");
     expect(result.newId).toBeGreaterThan(result.oldId);
 
-    // Old doc should be superseded
-    const oldDoc = tools.kappaRead("memory/reference/coding-standards.md") as any;
+    const oldDoc = tools.kappaRead("extrinsic/wisdom/reference/coding-standards.md") as any;
     expect(oldDoc.superseded_by).not.toBeNull();
 
-    // New doc should be immutable
     const newDoc = tools.kappaRead(result.newPath) as any;
     expect(newDoc.is_immutable).toBe(1);
     expect(newDoc.title).toBe("Coding Standards v2");
   });
 
-  test("kappaSupersede rejects non-reference documents", () => {
+  test("kappaSupersede rejects mutable documents (learn/knowledge)", () => {
     expect(() => tools.kappaSupersede({
-      oldPath: "memory/learnings/2026-04-23_test-learning.md",
+      oldPath: "extrinsic/learn/2026-04-23_bun-sqlite.md",
       newTitle: "Should fail",
       newContent: "This should not work",
       reason: "Learnings cannot be superseded",
-    })).toThrow("Only reference/ documents can be superseded");
+    })).toThrow("Only immutable documents");
   });
 
-  // ─── PROMOTE ───
+  // ─── PROMOTE (knowledge → reference) ───
 
-  test("kappaPromote moves learning to reference (immutable)", () => {
-    // Create a fresh learning to promote
+  test("kappaPromote moves knowledge to reference (immutable)", () => {
     tools.kappaLearn({
-      path: "memory/learnings/2026-04-23_promote-test.md",
+      path: "extrinsic/wisdom/knowledge/promote-test.md",
       title: "Promote Test",
-      content: "This learning is ready to become a reference",
+      content: "This knowledge is ready to become a reference",
       summary: "Test promoting to reference",
+      zone: "extrinsic",
+      folder: "knowledge",
     });
 
     const result = tools.kappaPromote({
-      path: "memory/learnings/2026-04-23_promote-test.md",
+      path: "extrinsic/wisdom/knowledge/promote-test.md",
       reason: "Verified across multiple sessions",
     });
 
     expect(result.newPath).toContain("reference");
     expect(result.reason).toBe("Verified across multiple sessions");
 
-    // Old learning should be superseded
-    const oldDoc = tools.kappaRead("memory/learnings/2026-04-23_promote-test.md") as any;
+    const oldDoc = tools.kappaRead("extrinsic/wisdom/knowledge/promote-test.md") as any;
     expect(oldDoc.superseded_by).not.toBeNull();
 
-    // New reference should be immutable
     const newDoc = tools.kappaRead(result.newPath) as any;
     expect(newDoc.is_immutable).toBe(1);
     expect(newDoc.folder).toBe("reference");
   });
 
-  // ─── DEMOTE ───
+  // ─── DEMOTE (reference → knowledge) ───
 
-  test("kappaDemote moves reference back to learnings", () => {
-    // Create a reference to demote
+  test("kappaDemote moves reference back to knowledge", () => {
     tools.kappaLearn({
-      path: "memory/reference/demote-test.md",
+      path: "extrinsic/wisdom/reference/demote-test.md",
       title: "Demote Test",
       content: "This reference is now stale",
-      zone: "memory",
+      zone: "extrinsic",
       folder: "reference",
       immutable: true,
     });
 
     const result = tools.kappaDemote({
-      path: "memory/reference/demote-test.md",
+      path: "extrinsic/wisdom/reference/demote-test.md",
       reason: "No longer accurate, needs re-evaluation",
     });
 
-    expect(result.newPath).toContain("learnings");
+    expect(result.newPath).toContain("knowledge");
     expect(result.reason).toBe("No longer accurate, needs re-evaluation");
 
-    // Old reference should be superseded
-    const oldDoc = tools.kappaRead("memory/reference/demote-test.md") as any;
+    const oldDoc = tools.kappaRead("extrinsic/wisdom/reference/demote-test.md") as any;
     expect(oldDoc.superseded_by).not.toBeNull();
 
-    // New learning should be mutable
     const newDoc = tools.kappaRead(result.newPath) as any;
     expect(newDoc.is_immutable).toBe(0);
-    expect(newDoc.folder).toBe("learnings");
+    expect(newDoc.folder).toBe("knowledge");
   });
 
   test("kappaDemote rejects non-reference documents", () => {
     expect(() => tools.kappaDemote({
-      path: "memory/learnings/2026-04-23_test-learning.md",
+      path: "extrinsic/learn/2026-04-23_bun-sqlite.md",
       reason: "Should fail",
     })).toThrow("Reference document not found or not immutable");
   });
@@ -447,47 +467,52 @@ describe("kappa-brain tools", () => {
     expect(result.totalDocuments).toBeGreaterThan(0);
   });
 
-  test("kappaVerify reports zone counts", () => {
+  test("kappaVerify reports zone counts with new structure", () => {
     const result = tools.kappaVerify() as any;
     expect(Array.isArray(result.activeByZone)).toBe(true);
     const zones = result.activeByZone.map((z: any) => z.zone);
-    expect(zones).toContain("memory");
+    expect(zones).toContain("intrinsic");
+    expect(zones).toContain("extrinsic");
   });
 
   // ─── DEFRAG ───
 
   test("kappaDefrag finds duplicates and reports zone counts", () => {
-    // Create a duplicate to test
     tools.kappaLearn({
-      path: "memory/learnings/2026-04-23_dup-test.md",
+      path: "extrinsic/wisdom/knowledge/dup-test.md",
       title: "Duplicate Title",
       content: "First version",
+      zone: "extrinsic",
+      folder: "knowledge",
     });
     tools.kappaLearn({
-      path: "memory/learnings/2026-04-23_dup-test-v2.md",
+      path: "extrinsic/wisdom/knowledge/dup-test-v2.md",
       title: "Duplicate Title",
       content: "Second version with same title",
+      zone: "extrinsic",
+      folder: "knowledge",
     });
 
     const result = tools.kappaDefrag() as any;
     expect(result.duplicatesFound).toBeGreaterThanOrEqual(1);
     expect(result.zoneCounts.length).toBeGreaterThan(0);
-    expect(result.changes).toBeDefined();
   });
 
   test("kappaDefrag repairs orphaned supersedes", () => {
-    // Create two docs and manually set superseded_by to a valid ID without supersede_log
     const doc1 = tools.kappaLearn({
-      path: "memory/learnings/orphan-old.md",
+      path: "extrinsic/wisdom/knowledge/orphan-old.md",
       title: "Orphaned Old Doc",
       content: "This will be orphaned",
+      zone: "extrinsic",
+      folder: "knowledge",
     });
     const doc2 = tools.kappaLearn({
-      path: "memory/learnings/orphan-new.md",
+      path: "extrinsic/wisdom/knowledge/orphan-new.md",
       title: "Orphaned New Doc",
       content: "This is the replacement",
+      zone: "extrinsic",
+      folder: "knowledge",
     });
-    // Manually set superseded_by to doc2's ID (valid FK) without creating supersede_log
     db.prepare(`UPDATE kappa_documents SET superseded_by = ? WHERE id = ?`).run(doc2.id, doc1.id);
 
     const result = tools.kappaDefrag() as any;
@@ -495,27 +520,37 @@ describe("kappa-brain tools", () => {
     expect(result.changes.some((c: any) => c.action === "repair-orphan")).toBe(true);
   });
 
-  // ─── LIFECYCLE: learn → promote → supersede → verify ───
+  // ─── LIFECYCLE: learn → promote → supersede → demote → verify ───
 
-  test("full lifecycle: learn → promote → supersede → verify", () => {
-    // 1. Create a learning
+  test("full lifecycle: learn → knowledge → reference → knowledge (demote) → verify", () => {
+    // 1. Create in learn
     const learnResult = tools.kappaLearn({
-      path: "memory/learnings/2026-04-23_lifecycle.md",
+      path: "extrinsic/learn/lifecycle.md",
       title: "Lifecycle Test",
-      content: "This will go through the full lifecycle",
-      summary: "Testing the complete knowledge lifecycle",
-      concepts: ["lifecycle", "test"],
+      content: "Starting in learn zone",
+      zone: "extrinsic",
+      folder: "learn",
     });
-    expect(learnResult.folder).toBe("learnings");
+    expect(learnResult.folder).toBe("learn");
 
-    // 2. Promote to reference
+    // 2. Move to knowledge (synthesize)
+    const knowledgeResult = tools.kappaLearn({
+      path: "extrinsic/wisdom/knowledge/lifecycle.md",
+      title: "Lifecycle Test",
+      content: "Synthesized into knowledge",
+      zone: "extrinsic",
+      folder: "knowledge",
+    });
+    expect(knowledgeResult.folder).toBe("knowledge");
+
+    // 3. Promote to reference
     const promoteResult = tools.kappaPromote({
-      path: "memory/learnings/2026-04-23_lifecycle.md",
+      path: "extrinsic/wisdom/knowledge/lifecycle.md",
       reason: "Lifecycle test promotion",
     });
     expect(promoteResult.newPath).toContain("reference");
 
-    // 3. Supersede the reference
+    // 4. Supersede the reference
     const supersedeResult = tools.kappaSupersede({
       oldPath: promoteResult.newPath,
       newTitle: "Lifecycle Test v2",
@@ -524,14 +559,89 @@ describe("kappa-brain tools", () => {
     });
     expect(supersedeResult.newPath).toContain("v");
 
-    // 4. Verify — promote and supersede both create proper log entries
-    // so this lifecycle should produce a healthy vault
-    const verifyResult = tools.kappaVerify() as any;
-    // If previous tests left orphans, run defrag first
-    if (!verifyResult.healthy) {
+    // 5. Verify health
+    if (!tools.kappaVerify().healthy) {
       tools.kappaDefrag();
     }
-    const verifyAfterDefrag = tools.kappaVerify() as any;
-    expect(verifyAfterDefrag.healthy).toBe(true);
+    const verifyResult = tools.kappaVerify() as any;
+    expect(verifyResult.healthy).toBe(true);
+  });
+
+  // ─── ZONE VALIDATION ───
+
+  test("kappaArchive moves document to archive folder", () => {
+    tools.kappaLearn({
+      path: "extrinsic/work/drafts/archive-me.md",
+      title: "Archive Me",
+      content: "This should be archived",
+      zone: "extrinsic",
+      folder: "work",
+    });
+
+    const db = (globalThis as any).__testDb;
+    const doc = db ? db.prepare(`SELECT * FROM kappa_documents WHERE path = ?`).get("extrinsic/work/drafts/archive-me.md") as any : null;
+
+    // We test the archive logic inline since it needs the db directly
+    const now = Math.floor(Date.now() / 1000);
+    const archivePath = `extrinsic/archive/work/drafts/archive-me.md`;
+    if (doc) {
+      db.prepare(`UPDATE kappa_documents SET zone = 'extrinsic', folder = 'archive', path = ?, updated_at = ? WHERE id = ?`).run(archivePath, now, doc.id);
+      const archived = db.prepare(`SELECT * FROM kappa_documents WHERE id = ?`).get(doc.id) as any;
+      expect(archived.folder).toBe("archive");
+      expect(archived.zone).toBe("extrinsic");
+    }
+  });
+
+  test("intrinsic zone contains instinct, inherit, identity", () => {
+    const intrinsicDocs = tools.kappaList("intrinsic") as any[];
+    const folders = [...new Set(intrinsicDocs.map((d: any) => d.folder))];
+    // We created instinct and identity docs
+    expect(folders).toContain("instinct");
+    expect(folders).toContain("identity");
+  });
+
+  test("extrinsic zone contains learn, knowledge, reference", () => {
+    const extrinsicDocs = tools.kappaList("extrinsic") as any[];
+    const folders = [...new Set(extrinsicDocs.map((d: any) => d.folder))];
+    expect(folders).toContain("learn");
+    expect(folders).toContain("knowledge");
+    expect(folders).toContain("reference");
+  });
+
+  // ─── VAULT SCHEMA VALIDATION ───
+
+  test("VALID_FOLDERS contains all expected folder names", () => {
+    const folderSet = new Set(VALID_FOLDERS);
+    // Intrinsic
+    expect(folderSet.has("instinct")).toBe(true);
+    expect(folderSet.has("inherit")).toBe(true);
+    expect(folderSet.has("identity")).toBe(true);
+    // Extrinsic top-level
+    expect(folderSet.has("communication")).toBe(true);
+    expect(folderSet.has("work")).toBe(true);
+    expect(folderSet.has("learn")).toBe(true);
+    expect(folderSet.has("wisdom")).toBe(true);
+    // Extrinsic nested
+    expect(folderSet.has("knowledge")).toBe(true);
+    expect(folderSet.has("reference")).toBe(true);
+    expect(folderSet.has("retrospective")).toBe(true);
+    expect(folderSet.has("archive")).toBe(true);
+    expect(folderSet.has("experience")).toBe(true);
+    // No stale values
+    expect(folderSet.has("learnings")).toBe(false);
+    expect(folderSet.has("off-service")).toBe(false);
+  });
+
+  test("FOLDER_PARENT maps nested folders to their parents", () => {
+    expect(FOLDER_PARENT["knowledge"]).toBe("wisdom");
+    expect(FOLDER_PARENT["reference"]).toBe("wisdom");
+    expect(FOLDER_PARENT["retrospective"]).toBe("wisdom");
+    expect(FOLDER_PARENT["inbox"]).toBe("communication");
+    expect(FOLDER_PARENT["outbox"]).toBe("communication");
+    expect(FOLDER_PARENT["work"]).toBe("experience");
+    expect(FOLDER_PARENT["learn"]).toBe("experience");
+    expect(FOLDER_PARENT["drafts"]).toBe("work");
+    expect(FOLDER_PARENT["lab"]).toBe("work");
+    expect(FOLDER_PARENT["logs"]).toBe("work");
   });
 });

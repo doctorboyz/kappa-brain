@@ -1,22 +1,43 @@
 {
-  "name": "kappa-brain",
+  "name": "@kappa-brain/brain-cli",
   "version": "1.0.0",
-  "description": "kappa-brain — MCP server for Kappa Cell memory: 23 tools, FTS5, supersede system, meditation ops",
+  "description": "Kappa Cell brain — MCP server (28 tools) + skill installer (13 pure kappa skills) + Cerebro lineage",
   "type": "module",
   "bin": {
-    "kappa-brain": "./src/server.ts"
+    "brain-cli": "dist/index.js"
+  },
+  "files": [
+    "dist/**"
+  ],
+  "keywords": [
+    "kappa",
+    "mcp",
+    "brain",
+    "cerebro",
+    "kappanet",
+    "skill-installer"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/doctorboyz/kappa-brain.git"
+  },
+  "author": "doctorboyz",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
-    "dev": "bun run --watch src/server.ts",
-    "build": "bun build src/server.ts --outdir dist --target bun",
-    "start": "bun dist/server.js",
+    "dev": "bun run --watch src/index.ts",
+    "build": "rm -rf dist && bun build src/index.ts --outdir dist --target bun && cp -r src/skills dist/skills && cp -r src/agents dist/agents",
+    "start": "bun dist/index.js",
     "test": "bun test test/",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "hono": "^4.12.5",
-    "@hono/node-server": "^1.13.8"
+    "commander": "^12.0.0",
+    "@clack/prompts": "^0.7.0"
   },
   "devDependencies": {
     "@types/bun": "latest",

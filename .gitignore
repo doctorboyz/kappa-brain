@@ -8,4 +8,7 @@ node_modules/
 dist/
 .DS_Store
 *.db
-*.sqlite
+*.sqlitekappa-brain.db
+kappa-brain.db-shm
+kappa-brain.db-wal
+node_modules/

@@ -48,6 +48,7 @@ export function kappaThread(args: { action: "create" | "list" | "read"; title?: 
   }
 
   if (args.action === "read") {
+    if (!args.title) throw new Error("title (thread ID) is required for read action");
     const thread = sqlite.prepare(`SELECT * FROM forum_threads WHERE id = ?`).get(args.title);
     const messages = sqlite.prepare(`SELECT * FROM forum_messages WHERE thread_id = ? ORDER BY created_at ASC`).all(args.title);
     return { thread, messages };

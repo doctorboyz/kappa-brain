@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// kappa-brain — MCP server for Kappa Cell memory
+// @kappa/brain-cli — MCP server mode
 // 28 tools, FTS5, supersede system, wisdom lifecycle, Cerebro lineage
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -7,28 +7,28 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 // Initialize database
-import "./db/index.js";
+import "../db/index.js";
 
 import {
   kappaSearch, kappaRead, kappaList, kappaLearn, kappaSupersede,
   kappaReflect, kappaHandoff, kappaInbox, kappaVerify,
-} from "./tools/critical.js";
+} from "../tools/critical.js";
 
 import {
   kappaLog, kappaWork, kappaArchive, kappaPromote,
   kappaDemote, kappaDefrag,
   kappaScheduleAdd, kappaScheduleList,
   kappaTrace, kappaTraceList, kappaTraceGet,
-} from "./tools/important.js";
+} from "../tools/important.js";
 
 import {
   kappaConcepts, kappaThread, kappaThreads,
   kappaThreadUpdate, kappaStats,
-} from "./tools/nice-to-have.js";
+} from "../tools/nice-to-have.js";
 
 import {
   cerebroScan, cerebroLineage, cerebroPing, cerebroRegister,
-} from "./tools/cerebro.js";
+} from "../tools/cerebro.js";
 
 const server = new McpServer({
   name: "kappa-brain",
@@ -255,10 +255,8 @@ server.tool("cerebro_register", "Register this Cell in the KappaNet registry (Ce
 
 // ─── START ───
 
-async function main() {
+export async function startMcpServer() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("kappa-brain MCP server running on stdio");
+  console.error("@kappa/brain-cli MCP server running on stdio");
 }
-
-main().catch(console.error);

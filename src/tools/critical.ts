@@ -1,6 +1,6 @@
 import { sqlite } from "../db/index.js";
 
-// ─── CRITICAL TOOLS (8) ───
+// ─── CRITICAL TOOLS (9) ───
 
 export function kappaSearch(query: string, zone?: string, limit = 20) {
   const ftsQuery = query.replace(/"/g, '""');
@@ -58,8 +58,8 @@ export function kappaLearn(args: {
   folder?: string;
   immutable?: boolean;
 }) {
-  const zone = args.zone || "memory";
-  const folder = args.folder || "learnings";
+  const zone = args.zone || "extrinsic";
+  const folder = args.folder || "learn";
   const now = Math.floor(Date.now() / 1000);
   const conceptsJson = args.concepts ? JSON.stringify(args.concepts) : null;
 
@@ -89,7 +89,7 @@ export function kappaSupersede(args: {
 }) {
   const old = sqlite.prepare(`SELECT * FROM kappa_documents WHERE path = ?`).get(args.oldPath) as any;
   if (!old) throw new Error(`Document not found: ${args.oldPath}`);
-  if (!old.is_immutable) throw new Error(`Only reference/ documents can be superseded. Use kappa_learn to update learnings.`);
+  if (!old.is_immutable) throw new Error(`Only immutable documents (instinct or reference) can be superseded. Use kappa_learn to update mutable documents.`);
 
   const now = Math.floor(Date.now() / 1000);
   const newPath = args.oldPath.replace(/\.md$/, `_v${now}.md`);
@@ -120,8 +120,7 @@ export function kappaSupersede(args: {
 }
 
 export function kappaReflect(zone?: string) {
-  // Pick a random document from resonance/ and learnings/
-  const targetZone = zone || "memory";
+  const targetZone = zone || "extrinsic";
   const row = sqlite.prepare(`
     SELECT d.id, d.path, d.title, d.content, d.folder
     FROM kappa_documents d
@@ -136,16 +135,16 @@ export function kappaReflect(zone?: string) {
 }
 
 export function kappaHandoff() {
-  // Get latest retrospective + recent learnings + active schedule
+  // Get latest retrospective + recent knowledge + active schedule
   const retro = sqlite.prepare(`
     SELECT path, title, content FROM kappa_documents
-    WHERE folder = 'retrospectives' AND superseded_by IS NULL
+    WHERE folder = 'retrospective' AND superseded_by IS NULL
     ORDER BY created_at DESC LIMIT 1
   `).get() as any;
 
-  const learnings = sqlite.prepare(`
+  const knowledge = sqlite.prepare(`
     SELECT path, title, summary FROM kappa_documents
-    WHERE folder = 'learnings' AND superseded_by IS NULL
+    WHERE folder = 'knowledge' AND superseded_by IS NULL
     ORDER BY created_at DESC LIMIT 5
   `).all();
 
@@ -153,7 +152,7 @@ export function kappaHandoff() {
     SELECT task, cron, next_run, enabled FROM schedule WHERE enabled = 1
   `).all();
 
-  return { retrospective: retro, recentLearnings: learnings, scheduledTasks: tasks };
+  return { retrospective: retro, recentKnowledge: knowledge, scheduledTasks: tasks };
 }
 
 export function kappaInbox(args: { action: "receive" | "send" | "list"; fromCell?: string; toCell?: string; content?: string }) {
