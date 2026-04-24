@@ -8,12 +8,13 @@ export interface Profile {
 export const PROFILES: Record<string, Profile> = {
   cell: {
     name: "cell",
-    description: "Minimal: 5 core skills, 5 core agents — just enough to be a Kappa Cell",
+    description: "Minimal: 6 core skills, 5 core agents — just enough to be a Kappa Cell",
     skills: [
       "born",
       "on-service",
       "off-service",
       "discharge",
+      "upload",
       "vitals",
     ],
     agents: [
@@ -26,12 +27,13 @@ export const PROFILES: Record<string, Profile> = {
   },
   standard: {
     name: "standard",
-    description: "Daily driver — 13 pure kappa skills, 14 agents",
+    description: "Daily driver — 14 pure kappa skills, 14 agents",
     skills: [
       "born",
       "on-service",
       "off-service",
       "discharge",
+      "upload",
       "meditation",
       "vitals",
       "diagnose",
@@ -63,12 +65,13 @@ export const PROFILES: Record<string, Profile> = {
   },
   full: {
     name: "full",
-    description: "All 13 pure kappa skills, 14 agents (same as standard)",
+    description: "All 14 pure kappa skills, 14 agents (same as standard)",
     skills: [
       "born",
       "on-service",
       "off-service",
       "discharge",
+      "upload",
       "meditation",
       "vitals",
       "diagnose",

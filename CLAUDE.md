@@ -23,9 +23,9 @@
 - `bunx @kappa/brain-cli cerebro scan` → CLI Cerebro commands
 - `bunx @kappa/brain-cli about` → Package info
 
-## 13 Pure Kappa Skills
+## 14 Pure Kappa Skills
 
-born, on-service, off-service, discharge, meditation, vitals, diagnose, cerebro, introduce, consult, surgery, about-kappa, emergency
+born, on-service, off-service, discharge, upload, meditation, vitals, diagnose, cerebro, introduce, consult, surgery, about-kappa, emergency
 
 ## Tool Summary (28 tools)
 

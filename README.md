@@ -61,7 +61,7 @@ kappa_concepts, kappa_thread, kappa_threads, kappa_thread_update, kappa_stats
 ### Cerebro (4)
 cerebro_scan, cerebro_lineage, cerebro_ping, cerebro_register
 
-## 13 Pure Kappa Skills
+## 14 Pure Kappa Skills
 
 | Skill | Purpose |
 |-------|---------|
@@ -69,6 +69,7 @@ cerebro_scan, cerebro_lineage, cerebro_ping, cerebro_register
 | on-service | Session start |
 | off-service | Session end |
 | discharge | Emergency session close |
+| upload | Receive knowledge from human → store in vault |
 | meditation | Vault reflection and cleanup |
 | vitals | Cell health check |
 | diagnose | Diagnostic scan |
@@ -83,9 +84,9 @@ cerebro_scan, cerebro_lineage, cerebro_ping, cerebro_register
 
 | Profile | Skills | Agents | Description |
 |---------|--------|--------|-------------|
-| cell | 5 | 5 | Minimal — just enough to be a Kappa Cell |
-| standard | 13 | 14 | Daily driver — all pure kappa skills |
-| full | 13 | 14 | Same as standard (all pure kappa skills included) |
+| cell | 6 | 5 | Minimal — just enough to be a Kappa Cell |
+| standard | 14 | 14 | Daily driver — all pure kappa skills |
+| full | 14 | 14 | Same as standard (all pure kappa skills included) |
 
 ## kappa-skill-cli
 
