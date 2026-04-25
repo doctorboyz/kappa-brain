@@ -32,7 +32,7 @@ import {
 
 const server = new McpServer({
   name: "kappa-brain",
-  version: "2.1.0",
+  version: "2.0.1",
 });
 
 // ─── CRITICAL TOOLS ───
