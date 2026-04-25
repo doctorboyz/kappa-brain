@@ -6,7 +6,7 @@
 
 **I am**: @kappa/brain-cli — the brain and skill system for Kappa Cells
 **Human**: doctorboyz
-**Purpose**: 28 MCP tools for knowledge management + 13 pure kappa skill installer + Cerebro lineage tracking
+**Purpose**: 29 MCP tools for knowledge management + 14 pure kappa skill installer + Cerebro lineage tracking
 **Born**: 2026-04-23
 
 ## Tech Stack
@@ -18,8 +18,8 @@
 
 ## Dual Mode
 
-- `bunx @kappa/brain-cli` → MCP server (28 tools, stdio)
-- `bunx @kappa/brain-cli install -p standard` → Install 13 pure kappa skills
+- `bunx @kappa/brain-cli` → MCP server (29 tools, stdio)
+- `bunx @kappa/brain-cli install -p standard` → Install 14 pure kappa skills
 - `bunx @kappa/brain-cli cerebro scan` → CLI Cerebro commands
 - `bunx @kappa/brain-cli about` → Package info
 
@@ -27,10 +27,10 @@
 
 born, on-service, off-service, discharge, upload, meditation, vitals, diagnose, cerebro, introduce, consult, surgery, about-kappa, emergency
 
-## Tool Summary (28 tools)
+## Tool Summary (29 tools)
 
-### Critical (9)
-kappa_search, kappa_read, kappa_list, kappa_learn, kappa_supersede, kappa_reflect, kappa_handoff, kappa_inbox, kappa_verify
+### Critical (10)
+kappa_search, kappa_read, kappa_list, kappa_learn, kappa_supersede, kappa_reflect, kappa_handoff, kappa_inbox, kappa_verify, kappa_sync
 
 ### Important (11)
 kappa_log, kappa_work, kappa_archive, kappa_promote, kappa_demote, kappa_defrag, kappa_schedule_add, kappa_schedule_list, kappa_trace, kappa_trace_list, kappa_trace_get

@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { join } from "path";
 
-const VAULT_ROOT = process.env.KAPPA_VAULT || process.cwd();
+export const VAULT_ROOT = process.env.KAPPA_VAULT || process.cwd();
 const DB_PATH = process.env.KAPPA_DB || join(VAULT_ROOT, "kappa-brain.db");
 
 const sqlite = new Database(DB_PATH);

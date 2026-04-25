@@ -1,7 +1,7 @@
 {
   "name": "@kappa-brain/brain-cli",
-  "version": "1.0.0",
-  "description": "Kappa Cell brain — MCP server (28 tools) + skill installer (13 pure kappa skills) + Cerebro lineage",
+  "version": "2.0.0",
+  "description": "Kappa Cell brain — MCP server (29 tools) + skill installer (14 pure kappa skills) + vault sync + Cerebro lineage",
   "type": "module",
   "bin": {
     "brain-cli": "dist/index.js"

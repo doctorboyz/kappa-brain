@@ -1,4 +1,6 @@
-import { sqlite } from "../db/index.js";
+import { sqlite, VAULT_ROOT } from "../db/index.js";
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, existsSync } from "fs";
+import { join, dirname, parse as parsePath } from "path";
 
 // ─── CRITICAL TOOLS (9) ───
 
@@ -77,6 +79,9 @@ export function kappaLearn(args: {
   // Log activity
   logActivity("kappa_learn", "add", args.path, `Added to ${zone}/${folder}`);
 
+  // Write vault file (keep DB and filesystem in sync)
+  writeVaultFile(zone, folder, args.path, args.content);
+
   return { id: result.lastInsertRowid, path: args.path, zone, folder };
 }
 
@@ -115,6 +120,9 @@ export function kappaSupersede(args: {
   `).run(old.id, result.lastInsertRowid, args.reason, now);
 
   logActivity("kappa_supersede", "supersede", args.oldPath, `→ ${newPath}: ${args.reason}`);
+
+  // Write new vault file
+  writeVaultFile(old.zone, old.folder, newPath, args.newContent);
 
   return { oldId: old.id, newId: result.lastInsertRowid, newPath, reason: args.reason };
 }
@@ -208,6 +216,200 @@ export function kappaVerify() {
 }
 
 // ─── Helper ───
+
+function writeVaultFile(zone: string, folder: string, path: string, content: string) {
+  const fullPath = join(VAULT_ROOT, zone, folder, path);
+  const dir = dirname(fullPath);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  writeFileSync(fullPath, content, "utf-8");
+}
+
+function parseFrontmatter(content: string): { frontmatter: Record<string, string>; body: string } {
+  const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  if (!match) return { frontmatter: {}, body: content };
+
+  const fm: Record<string, string> = {};
+  for (const line of match[1].split("\n")) {
+    const idx = line.indexOf(":");
+    if (idx > 0) {
+      fm[line.slice(0, idx).trim()] = line.slice(idx + 1).trim().replace(/^["']|["']$/g, "");
+    }
+  }
+  return { frontmatter: fm, body: match[2] || "" };
+}
+
+export function kappaSync(args: {
+  action: "import" | "export" | "sync";
+  zone?: string;
+  folder?: string;
+  dryRun?: boolean;
+}) {
+  const vaultRoot = VAULT_ROOT;
+  if (!existsSync(vaultRoot)) {
+    return { error: `Vault directory not found: ${vaultRoot}` };
+  }
+
+  if (args.action === "import") {
+    return syncImport(vaultRoot, args.zone, args.folder, args.dryRun);
+  }
+  if (args.action === "export") {
+    return syncExport(vaultRoot, args.zone, args.folder, args.dryRun);
+  }
+  if (args.action === "sync") {
+    const importResult = syncImport(vaultRoot, args.zone, args.folder, args.dryRun);
+    const exportResult = syncExport(vaultRoot, args.zone, args.folder, args.dryRun);
+    return {
+      action: "sync",
+      imported: importResult.imported,
+      updated: importResult.updated,
+      skipped: importResult.skipped,
+      exported: exportResult.exported,
+      errors: [...(importResult.errors || []), ...(exportResult.errors || [])],
+    };
+  }
+
+  throw new Error(`Unknown action: ${args.action}. Use "import", "export", or "sync".`);
+}
+
+function syncImport(
+  vaultRoot: string,
+  zoneFilter?: string,
+  folderFilter?: string,
+  dryRun = false
+): { imported: number; updated: number; skipped: number; errors: string[] } {
+  const result = { imported: 0, updated: 0, skipped: 0, errors: [] as string[] };
+
+  function walkDir(dir: string, zone: string, folder: string) {
+    if (!existsSync(dir)) return;
+    const entries = readdirSync(dir);
+    for (const entry of entries) {
+      const fullPath = join(dir, entry);
+      const stat = statSync(fullPath);
+      if (stat.isDirectory()) {
+        // Map directory names to zone/folder
+        walkDir(fullPath, zone, entry);
+      } else if (entry.endsWith(".md")) {
+        const dbPath = zone + "/" + folder + "/" + entry;
+        const content = readFileSync(fullPath, "utf-8");
+        const { frontmatter, body } = parseFrontmatter(content);
+
+        // Skip if filtered
+        if (zoneFilter && zone !== zoneFilter) { result.skipped++; return; }
+        if (folderFilter && folder !== folderFilter) { result.skipped++; return; }
+
+        // Check if already in DB
+        const existing = sqlite.prepare(`SELECT id, content FROM kappa_documents WHERE path = ? AND superseded_by IS NULL`).get(dbPath) as any;
+
+        const title = frontmatter.title || entry.replace(/\.md$/, "").replace(/^\d{2}-/, "").replace(/-/g, " ");
+        const summary = frontmatter.summary || frontmatter.description || null;
+        const concepts = frontmatter.concepts || frontmatter.tags || null;
+        const conceptsJson = concepts ? JSON.stringify(concepts.split(",").map((c: string) => c.trim())) : null;
+
+        if (!existing) {
+          // New document — insert
+          if (!dryRun) {
+            sqlite.prepare(`
+              INSERT INTO kappa_documents (zone, folder, path, title, content, summary, concepts, is_immutable, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+            `).run(zone, folder, dbPath, title, content, summary, conceptsJson, Math.floor(Date.now() / 1000));
+
+            const newId = sqlite.prepare(`SELECT last_insert_rowid() as id`).get() as any;
+            sqlite.prepare(`INSERT INTO kappa_fts (rowid, title, content, summary, concepts) VALUES (?, ?, ?, ?, ?)`)
+              .run(newId.id, title, content, summary || "", conceptsJson || "");
+            logActivity("kappa_sync", "import", dbPath, `Imported from vault to ${zone}/${folder}`);
+          }
+          result.imported++;
+        } else if (content !== existing.content) {
+          // Content changed — update mutable, supersede immutable
+          const isImmutable = sqlite.prepare(`SELECT is_immutable FROM kappa_documents WHERE id = ?`).get(existing.id) as any;
+          if (isImmutable?.is_immutable) {
+            // For immutable docs, don't auto-supersede — just skip with a note
+            result.skipped++;
+          } else {
+            // Update mutable document
+            if (!dryRun) {
+              sqlite.prepare(`UPDATE kappa_documents SET content = ?, title = ?, summary = ?, concepts = ?, updated_at = ? WHERE id = ?`)
+                .run(content, title, summary, conceptsJson, Math.floor(Date.now() / 1000), existing.id);
+              sqlite.prepare(`DELETE FROM kappa_fts WHERE rowid = ?`).run(existing.id);
+              sqlite.prepare(`INSERT INTO kappa_fts (rowid, title, content, summary, concepts) VALUES (?, ?, ?, ?, ?)`)
+                .run(existing.id, title, content, summary || "", conceptsJson || "");
+              logActivity("kappa_sync", "update", dbPath, `Updated from vault`);
+            }
+            result.updated++;
+          }
+        } else {
+          result.skipped++;
+        }
+      }
+    }
+  }
+
+  // Walk the vault structure: intrinsic/{instinct,inherit,identity} and extrinsic/{communication,experience,wisdom,archive}
+  const intrinsicDir = join(vaultRoot, "intrinsic");
+  const extrinsicDir = join(vaultRoot, "extrinsic");
+
+  if (existsSync(intrinsicDir)) {
+    for (const folder of ["instinct", "inherit", "identity"]) {
+      walkDir(join(intrinsicDir, folder), "intrinsic", folder);
+    }
+  }
+  if (existsSync(extrinsicDir)) {
+    // Top-level folders
+    for (const folder of ["communication", "experience", "wisdom", "archive"]) {
+      walkDir(join(extrinsicDir, folder), "extrinsic", folder);
+    }
+    // Nested folders
+    for (const sub of ["inbox", "outbox"]) {
+      walkDir(join(extrinsicDir, "communication", sub), "extrinsic", "inbox");
+    }
+    for (const sub of ["learn", "work"]) {
+      walkDir(join(extrinsicDir, "experience", sub), "extrinsic", sub);
+    }
+    for (const sub of ["drafts", "lab", "logs"]) {
+      walkDir(join(extrinsicDir, "experience", "work", sub), "extrinsic", sub);
+    }
+    for (const sub of ["retrospective", "knowledge", "reference"]) {
+      walkDir(join(extrinsicDir, "wisdom", sub), "extrinsic", sub);
+    }
+  }
+
+  return result;
+}
+
+function syncExport(
+  vaultRoot: string,
+  zoneFilter?: string,
+  folderFilter?: string,
+  dryRun = false
+): { exported: number; errors: string[] } {
+  const result = { exported: 0, errors: [] as string[] };
+
+  let sql = `SELECT zone, folder, path, content FROM kappa_documents WHERE superseded_by IS NULL`;
+  const params: string[] = [];
+  if (zoneFilter) { sql += ` AND zone = ?`; params.push(zoneFilter); }
+  if (folderFilter) { sql += ` AND folder = ?`; params.push(folderFilter); }
+
+  const docs = sqlite.prepare(sql).all(...params) as any[];
+
+  for (const doc of docs) {
+    const filePath = join(vaultRoot, doc.zone, doc.folder, doc.path);
+    const dir = dirname(filePath);
+
+    // Skip if file already exists with same content
+    if (existsSync(filePath)) {
+      const existing = readFileSync(filePath, "utf-8");
+      if (existing === doc.content) continue;
+    }
+
+    if (!dryRun) {
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, doc.content, "utf-8");
+    }
+    result.exported++;
+  }
+
+  return result;
+}
 
 function logActivity(tool: string, action: string, targetPath: string, details: string) {
   const now = Math.floor(Date.now() / 1000);

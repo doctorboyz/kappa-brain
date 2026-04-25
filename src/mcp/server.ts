@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // @kappa/brain-cli — MCP server mode
-// 28 tools, FTS5, supersede system, wisdom lifecycle, Cerebro lineage
+// 29 tools, FTS5, supersede system, wisdom lifecycle, vault sync, Cerebro lineage
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -11,7 +11,7 @@ import "../db/index.js";
 
 import {
   kappaSearch, kappaRead, kappaList, kappaLearn, kappaSupersede,
-  kappaReflect, kappaHandoff, kappaInbox, kappaVerify,
+  kappaReflect, kappaHandoff, kappaInbox, kappaVerify, kappaSync,
 } from "../tools/critical.js";
 
 import {
@@ -32,7 +32,7 @@ import {
 
 const server = new McpServer({
   name: "kappa-brain",
-  version: "2.0.0",
+  version: "2.1.0",
 });
 
 // ─── CRITICAL TOOLS ───
@@ -96,6 +96,15 @@ server.tool("kappa_handoff", "Prepare session handoff — latest retro, knowledg
 
 server.tool("kappa_verify", "Check brain health — document counts, orphan supersedes, integrity", {}, async () => ({
   content: [{ type: "text", text: JSON.stringify(kappaVerify(), null, 2) }],
+}));
+
+server.tool("kappa_sync", "Sync vault files ↔ DB (bidirectional)", {
+  action: z.enum(["import", "export", "sync"]).describe("import: vault→DB, export: DB→vault, sync: bidirectional"),
+  zone: z.string().optional().describe("Filter by zone: intrinsic, extrinsic"),
+  folder: z.string().optional().describe("Filter by folder"),
+  dryRun: z.boolean().optional().default(false).describe("Preview changes without writing"),
+}, async (args) => ({
+  content: [{ type: "text", text: JSON.stringify(kappaSync(args), null, 2) }],
 }));
 
 // ─── IMPORTANT TOOLS ───

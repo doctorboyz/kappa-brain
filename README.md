@@ -1,6 +1,6 @@
 # @kappa-brain/brain-cli
 
-> Kappa Cell brain — MCP server (28 tools) + skill installer (13 pure kappa skills) + Cerebro lineage
+> Kappa Cell brain — MCP server (29 tools) + skill installer (14 pure kappa skills) + Cerebro lineage
 
 ## Quick Start
 
@@ -19,10 +19,10 @@ bunx @kappa-brain/brain-cli cerebro scan
 
 | Mode | Command | Purpose |
 |------|---------|---------|
-| MCP server | `bunx @kappa-brain/brain-cli` | 28 tools via stdio |
+| MCP server | `bunx @kappa-brain/brain-cli` | 29 tools via stdio |
 | MCP server | `bunx @kappa-brain/brain-cli --mcp` | Explicit MCP mode |
-| Install | `bunx @kappa-brain/brain-cli install -p cell` | 5 core skills |
-| Install | `bunx @kappa-brain/brain-cli install -p standard` | 13 skills + 14 agents |
+| Install | `bunx @kappa-brain/brain-cli install -p cell` | 6 core skills |
+| Install | `bunx @kappa-brain/brain-cli install -p standard` | 14 skills + 14 agents |
 | Uninstall | `bunx @kappa-brain/brain-cli uninstall --all` | Archive + remove |
 | List | `bunx @kappa-brain/brain-cli list --available` | Show available skills |
 | Cerebro | `bunx @kappa-brain/brain-cli cerebro scan` | KappaNet discovery |
@@ -47,10 +47,10 @@ Add to `.claude/settings.json` or `.claude/settings.local.json`:
 }
 ```
 
-## 28 MCP Tools
+## 29 MCP Tools
 
-### Critical (9)
-kappa_search, kappa_read, kappa_list, kappa_learn, kappa_supersede, kappa_reflect, kappa_handoff, kappa_inbox, kappa_verify
+### Critical (10)
+kappa_search, kappa_read, kappa_list, kappa_learn, kappa_supersede, kappa_reflect, kappa_handoff, kappa_inbox, kappa_verify, kappa_sync
 
 ### Important (11)
 kappa_log, kappa_work, kappa_archive, kappa_promote, kappa_demote, kappa_defrag, kappa_schedule_add, kappa_schedule_list, kappa_trace, kappa_trace_list, kappa_trace_get
@@ -90,7 +90,7 @@ cerebro_scan, cerebro_lineage, cerebro_ping, cerebro_register
 
 ## kappa-skill-cli
 
-The full [kappa-skill-cli](https://github.com/doctorboyz/kappa-skill-cli) package contains 53 skills including user-specific and tech-pattern skills (Laravel, PyTorch, Python stack, etc.). This package (`@kappa-brain/brain-cli`) includes only the 13 pure kappa skills that apply to every Cell. For the full catalog, use kappa-skill-cli separately.
+The full [kappa-skill-cli](https://github.com/doctorboyz/kappa-skill-cli) package contains 53 skills including user-specific and tech-pattern skills (Laravel, PyTorch, Python stack, etc.). This package (`@kappa-brain/brain-cli`) includes only the 14 pure kappa skills that apply to every Cell. For the full catalog, use kappa-skill-cli separately.
 
 ## Database Tables
 
@@ -106,6 +106,18 @@ The full [kappa-skill-cli](https://github.com/doctorboyz/kappa-skill-cli) packag
 | `forum_threads` + `forum_messages` | Discussion threads |
 | `cell_registry` | Cerebro Cell identity |
 | `cell_lineage` | Closure table for family tree |
+
+## Vault Sync
+
+`kappa_sync` keeps κ/ vault files and the DB in sync:
+
+| Action | What it does |
+|--------|-------------|
+| `import` | Read vault .md files → insert/update in DB |
+| `export` | Write DB documents → .md files in vault |
+| `sync` | Bidirectional: import new/changed files, export new DB entries |
+
+`kappa_learn` and `kappa_supersede` now also write .md files to the vault, ensuring DB and filesystem stay consistent.
 
 ## Tech Stack
 

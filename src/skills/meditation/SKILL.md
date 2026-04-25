@@ -20,6 +20,7 @@ In medicine, meditation is the practice of organizing scattered thoughts into cl
 /meditation                    # Full meditation — review all memory tiers
 /meditation --tier             # Review and promote/demote knowledge between tiers
 /meditation --defrag           # Full defragmentation — reorganize κ/ memory, consolidate duplicates, update references
+/meditation --sync             # Sync vault files ↔ DB — import new vault files, export new DB entries
 ```
 
 ## Flags
@@ -28,6 +29,7 @@ In medicine, meditation is the practice of organizing scattered thoughts into cl
 |------|----------|
 | `--tier` | Review knowledge in each tier and suggest promotions (knowledge to reference) or demotions (reference back to knowledge if stale). Interactive — human decides each move. |
 | `--defrag` | Full defragmentation. Consolidate duplicate entries, reorganize file structure, update cross-references, repair broken links. More aggressive than `--tier`. |
+| `--sync` | Bidirectional vault sync. Calls `kappa_sync sync` to import new/changed vault files into DB and export new DB entries to vault files. Use after manual vault edits or to ensure consistency. |
 
 Default (no flag): equivalent to `--tier` — a gentle review of memory tiers.
 
@@ -76,6 +78,7 @@ When reference material becomes stale or uncertain:
 | Promote | `kappa_promote` | knowledge -> reference (immutable) |
 | Demote | `kappa_demote` | reference -> knowledge (mutable, re-evaluate) |
 | Defrag | `kappa_defrag` | Find duplicates, repair orphans, identify stale |
+| Sync | `kappa_sync` | Bidirectional vault ↔ DB synchronization |
 | Verify | `kappa_verify` | Health check — counts, orphans, integrity |
 | Reflect | `kappa_reflect` | Random wisdom from vault |
 

@@ -38,6 +38,7 @@ This skill merges the Oracle ecosystem's `/skills-list` and `/go` commands.
 3. **Service Status** — Key services (databases, caches, API servers) up/down
 4. **Skill Summary** — Count of installed skills per profile
 5. **Current Profile** — Which skill profile is active
+6. **Vault Sync Status** — Are vault files and DB in sync? Run `kappa_verify` to check document counts and `kappa_sync sync --dry-run` to preview differences
 
 ## Profile Switching (with profile argument)
 
