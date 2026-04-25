@@ -85,12 +85,12 @@ cerebro_scan, cerebro_lineage, cerebro_ping, cerebro_register
 | Profile | Skills | Agents | Description |
 |---------|--------|--------|-------------|
 | cell | 6 | 5 | Minimal — just enough to be a Kappa Cell |
-| standard | 14 | 14 | Daily driver — all pure kappa skills |
-| full | 14 | 14 | Same as standard (all pure kappa skills included) |
+| standard | 23 | 14 | Daily driver — all pure kappa skills |
+| full | 23 | 14 | Same as standard (all pure kappa skills included) |
 
 ## kappa-skill-cli
 
-The full [kappa-skill-cli](https://github.com/doctorboyz/kappa-skill-cli) package contains 53 skills including user-specific and tech-pattern skills (Laravel, PyTorch, Python stack, etc.). This package (`@kappa-brain/brain-cli`) includes only the 14 pure kappa skills that apply to every Cell. For the full catalog, use kappa-skill-cli separately.
+The [kappa-skill-cli](https://github.com/doctorboyz/kappa-skill-cli) package contains 23 pure kappa skills (medical/lifecycle theme only — no tech-specific skills). This package (`@kappa-brain/brain-cli`) includes 14 of those skills built-in, plus 15 additional MCP-only tools.
 
 ## Database Tables
 
@@ -132,9 +132,9 @@ The full [kappa-skill-cli](https://github.com/doctorboyz/kappa-skill-cli) packag
 |--------|------|---------|
 | DNA | [kappa-genome](https://github.com/doctorboyz/kappa-genome) | แบบพิมพ์พันธุกรรม |
 | Soul | [Adams-kappa](https://github.com/doctorboyz/Adams-kappa) | เซลล์ตัวแรก — identity + κ/ vault |
-| Skill | [kappa-skill-cli](https://github.com/doctorboyz/kappa-skill-cli) | ทักษะเต็ม 53 อย่าง |
+| Skill | [kappa-skill-cli](https://github.com/doctorboyz/kappa-skill-cli) | ทักษะบริสุทธิ์ 23 อย่าง |
 | Interface | [KI](https://github.com/doctorboyz/KI) | ระบบประสาท — multi-agent TUI |
-| Brain | This repo | สมองความจำ — MCP + CLI |
+| Brain | This repo | สมองความจำ — 29 MCP tools + vault sync |
 
 ## License
 
